@@ -7,17 +7,17 @@ import (
 	"time"
 )
 
-type RpcLock struct {
+type Lock struct {
 	name    string
 	owner   string
 	seconds int
 	redis   *redis.Client
 }
 
-type option func(lock *RpcLock)
+type option func(lock *Lock)
 
-func NewRpcLock(redis *redis.Client, name string, opts ...option) *RpcLock {
-	lock := &RpcLock{name: name, redis: redis}
+func NewLock(redis *redis.Client, name string, opts ...option) *Lock {
+	lock := &Lock{name: name, redis: redis}
 
 	for _, opt := range opts {
 		opt(lock)
@@ -31,21 +31,21 @@ func NewRpcLock(redis *redis.Client, name string, opts ...option) *RpcLock {
 }
 
 // WithOwner 锁的拥有者
-func WithOwner(owner string) func(lock *RpcLock) {
-	return func(lock *RpcLock) {
+func WithOwner(owner string) func(lock *Lock) {
+	return func(lock *Lock) {
 		lock.owner = owner
 	}
 }
 
 // WithEX 锁的过期时间 单位 秒
-func WithEX(seconds int) func(lock *RpcLock) {
-	return func(lock *RpcLock) {
+func WithEX(seconds int) func(lock *Lock) {
+	return func(lock *Lock) {
 		lock.seconds = seconds
 	}
 }
 
 // Acquire 加锁
-func (lock *RpcLock) Acquire() bool {
+func (lock *Lock) Acquire() bool {
 	var val *redis.BoolCmd
 	if lock.seconds > 0 {
 		val = lock.redis.SetNX(context.Background(), lock.name, lock.owner, time.Duration(lock.seconds)*time.Second)
@@ -59,7 +59,7 @@ func (lock *RpcLock) Acquire() bool {
 }
 
 // Release 释放自己加的锁
-func (lock *RpcLock) Release() bool {
+func (lock *Lock) Release() bool {
 	eval := lock.redis.Eval(context.Background(), `
 if redis.call("get",KEYS[1]) == ARGV[1] then
     return redis.call("del",KEYS[1])
@@ -75,12 +75,12 @@ end
 }
 
 // ForceRelease 强制释放锁
-func (lock *RpcLock) ForceRelease() {
+func (lock *Lock) ForceRelease() {
 	lock.redis.Del(context.Background(), lock.name)
 }
 
 // GetCurrentOwner 获取当前拥有者
-func (lock *RpcLock) GetCurrentOwner() string {
+func (lock *Lock) GetCurrentOwner() string {
 	result, _ := lock.redis.Get(context.Background(), lock.name).Result()
 
 	return result
